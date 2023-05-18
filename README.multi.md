@@ -34,11 +34,11 @@ $ cp -r espnet/egs2/jvs espnet/egs2/studies
 
 ### 修正済ファイルのコピー
 
-修正済みのファイルは，このリポジトリの ./egs2/studies/tts1/ にあるので，
+修正済みのファイルは，このリポジトリの ./egs2/studies_multi/tts1/ にあるので，
 それをコピーする．
 
 ```
-$ cp -r egs2/studies/tts1/* espnet/egs2/studies/tts1/
+$ cp -r egs2/studies/tts1/* espnet/egs2/studies_multi/tts1/
 ```
 
 どのように変更したかは付録で説明する．
@@ -48,7 +48,7 @@ $ cp -r egs2/studies/tts1/* espnet/egs2/studies/tts1/
 以降はレシピのディレクトリで実行するため，まず移動する．
 
 ```
-$ cd espnet/egs2/studies/tts1/
+$ cd espnet/egs2/studies_multi/tts1/
 ```
 
 トークンリストを作成するまでの前処理を実行する．
@@ -57,7 +57,7 @@ $ cd espnet/egs2/studies/tts1/
 $ ./run.sh \
     --stage 0 \
     --stop-stage 5 \
-    --g2p pyopenjtalk_prosody \
+    --g2p pyopenjtalk_prosody_with_special_token \
     --min_wav_duration 0.38 \
     --fs 22050 \
     --n_fft 1024 \
@@ -70,7 +70,7 @@ $ ./run.sh \
     --train_config ./conf/tuning/finetune_vits.yaml 
 ```
 
-これで，```dump/22k/token_list/phn_jaconv_pyopenjtalk_prosody/tokens.txt```という名前でトークンリストが作成されるが，このリストはファインチューニングのために読み込む事前学習済モデルのトークンリストと異なるため，入れ替えが必要．
+これで，```dump/22k/token_list/phn_jaconv_pyopenjtalk_prosody_with_special_token/tokens.txt```という名前でトークンリストが作成されるが，このリストはファインチューニングのために読み込む事前学習済モデルのトークンリストと異なるため，入れ替えが必要．
 
 ### 学習済モデルのダウンロード
 
@@ -138,6 +138,14 @@ $ cp dump/22k/token_list/phn_jaconv_pyopenjtalk_prosody/tokens.txt{,.bak}
 $ cp $PRETRAINED_MODEL_TOKENS_TXT dump/22k/token_list/phn_jaconv_pyopenjtalk_prosody/tokens.txt
 ```
 
+さらに，このトークンリストに新たに加えた感情のトークンを追加します．
+ファイルの最後に以下の3行を追加します．
+```
+<happy>
+<angry>
+<sad>
+```
+
 ### ファインチューニング（Stage 6 以降）の実行
 
 以上で準備が整ったので，Stage 6 以降の実際の学習を行います．
@@ -146,7 +154,7 @@ $ cp $PRETRAINED_MODEL_TOKENS_TXT dump/22k/token_list/phn_jaconv_pyopenjtalk_pro
 ```
 $ ./run.sh \
     --stage 6 \
-    --g2p pyopenjtalk_prosody \
+    --g2p pyopenjtalk_prosody_with_special_token \
     --min_wav_duration 0.38 \
     --fs 22050 \
     --n_fft 1024 \
@@ -158,11 +166,11 @@ $ ./run.sh \
     --feats_normalize none \
     --train_config ./conf/tuning/finetune_vits.yaml \
     --train_args "--init_param ${PRETRAINED_MODEL_FILE}" \
-    --tag finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody \
+    --tag finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody_with_special_token \
     --inference_model train.total_count.ave_10best.pth
 ```
 
-学習のログファイルは ```exp/tts_train_finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody/train.log``` に出力されます．学習の進行状況はこのファイルを見ると分かります．
+学習のログファイルは ```exp/tts_train_finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody_with_special_token/train.log``` に出力されます．学習の進行状況はこのファイルを見ると分かります．
 
 ### 試しに音声を合成してみる
 
@@ -270,3 +278,135 @@ $ ./run.sh \
     --skip_upload_hf false \
     --hf_repo fujie/fujie_studies_tts_finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody
 ```
+
+### 埋め込み層のみの学習
+
+generator_onlyオプションはESPnetをハックして実装したもの．
+
+discriminatorを全てフリーズすると，discriminatorのbackward計算時にエラーで停止してしまう．
+
+```
+$ ./run.sh \
+    --stage 6 \
+    --g2p pyopenjtalk_prosody_with_special_token \
+    --min_wav_duration 0.38 \
+    --fs 22050 \
+    --n_fft 1024 \
+    --n_shift 256 \
+    --dumpdir dump/22k \
+    --win_length null \
+    --tts_task gan_tts \
+    --feats_extract linear_spectrogram \
+    --feats_normalize none \
+    --train_config ./conf/tuning/finetune_vits.yaml \
+    --train_args "--init_param ${PRETRAINED_MODEL_FILE} \
+    --ignore_init_mismatch true \
+    --generator_only true \
+    --freeze_param tts.generator.text_encoder.encoders tts.generator.text_encoder.proj tts.generator.decoder tts.generator.posterior_encoder tts.generator.flow tts.generator.duration_predictor tts.discriminator" \
+    --tag finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody_with_special_token_emb \
+    --inference_model train.total_count.ave_10best.pth \
+    --ngpu 2
+```
+
+tts.generator.text_encoder.encoders
+tts.generator.text_encoder.proj
+tts.generator.decoder
+tts.generator.posterior_encoder
+tts.generator.flow
+tts.generator.duration_predictor
+tts.discriminator
+
+埋め込み層のみの学習は，やはりデータの違いが影響して上手くいかなかったのでJSUTでやり直す．
+
+`egs2/studies/tts1/conf/tuning/finetune_vits.yaml` を
+`egs2/jsut/tts1/conf/tuning/finetune_vits.yaml` にコピー.
+
+```
+$ ./run.sh \
+    --stage 0 \
+    --stop-stage 5 \
+    --g2p pyopenjtalk_prosody_with_special_token \
+    --min_wav_duration 0.38 \
+    --fs 22050 \
+    --n_fft 1024 \
+    --n_shift 256 \
+    --dumpdir dump/22k \
+    --win_length null \
+    --tts_task gan_tts \
+    --feats_extract linear_spectrogram \
+    --feats_normalize none \
+    --train_config ./conf/tuning/finetune_vits.yaml 
+```
+
+トークンリストは
+`egs2/studies_multi/tts1/dump/22k/token_list/(略)/tokens.txt` を
+`egs2/jsut/tts1/dump/22k/token_list/(略)/tokens.txt` にコピーする．
+
+downloadsフォルダのリンク（パラメタファイルの位置を確定するため）
+
+```
+$ ln -s ../../studies_multi/tts1/downloads .
+```
+
+学習
+
+```
+$ ./run.sh \
+    --stage 6 \
+    --g2p pyopenjtalk_prosody_with_special_token \
+    --min_wav_duration 0.38 \
+    --fs 22050 \
+    --n_fft 1024 \
+    --n_shift 256 \
+    --dumpdir dump/22k \
+    --win_length null \
+    --tts_task gan_tts \
+    --feats_extract linear_spectrogram \
+    --feats_normalize none \
+    --train_config ./conf/tuning/finetune_vits.yaml \
+    --train_args "--init_param ${PRETRAINED_MODEL_FILE} \
+    --ignore_init_mismatch true \
+    --generator_only true \
+    --freeze_param tts.generator.text_encoder.encoders tts.generator.text_encoder.proj tts.generator.decoder tts.generator.posterior_encoder tts.generator.flow tts.generator.duration_predictor tts.discriminator" \
+    --tag finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody_with_special_token_emb \
+    --inference_model train.total_count.ave_10best.pth \
+    --ngpu 2
+```
+
+メモリがきつそうなので少しバッチサイズを下げた
+
+---
+再度方針を変えて，
+埋め込み層のパラメタのサイズが異なっても読み込めるように改造します．
+
+具体的には
+`espnet/espnet2/gan_tts/espnet_model.py`
+の load_state_dict フックして下記のようにします．
+```python
+    def load_state_dict(self, state_dict, *args, **kwargs):
+        embeding_layer_key = 'tts.generator.text_encoder.emb.weight'
+        if embeding_layer_key in state_dict:
+            state_emb_weight = state_dict[embeding_layer_key]
+            current_emb_weight = self.tts.generator.text_encoder.emb.weight
+            if state_emb_weight.shape != current_emb_weight.shape:
+                # 'emb.weight'のサイズが異なる場合、新しいパラメータを作成し、初期値で埋めます
+                new_emb_weight = torch.zeros_like(current_emb_weight)
+                min_rows = min(state_emb_weight.shape[0], current_emb_weight.shape[0])
+                new_emb_weight[:min_rows, :] = state_emb_weight[:min_rows, :]
+                state_dict[embeding_layer_key] = new_emb_weight
+
+        # フック前のload_state_dictメソッドを呼び出してパラメータを読み込みます
+        super(AbsGANESPnetModel, self).load_state_dict(state_dict, *args, **kwargs)
+```
+
+これでミスマッチがあっても読み込めるはずなので，続けて学習してみる．
+
+train_configから```--ignore_init_mismatch true```は消す．
+
+なんとなく気分的には <sos/eos> トークンがリストの最後じゃないと気持ち悪いので，
+<happy>
+<angry>
+<sad>
+<sos/eos>
+の順に直した．
+若干不整合が生じるが，気にしない．
