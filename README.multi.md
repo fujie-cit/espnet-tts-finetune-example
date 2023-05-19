@@ -274,7 +274,7 @@ $ ./run.sh \
     --train_config ./conf/tuning/finetune_vits.yaml \
     --train_args "--init_param ${PRETRAINED_MODEL_FILE}" \
     --tag finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody \
-    --inference_model train.total_count.ave_10best.pth
+    --inference_model train.total_count.ave_10best.pth \
     --skip_upload_hf false \
     --hf_repo fujie/fujie_studies_tts_finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody
 ```
@@ -410,3 +410,33 @@ train_configから```--ignore_init_mismatch true```は消す．
 <sos/eos>
 の順に直した．
 若干不整合が生じるが，気にしない．
+
+うまくいっていそう．
+
+--
+parallel-waveganのファインチューニングもやってみたい．
+
+silver10で動いている．
+終わったら exp フォルダごと gdrive にコピーして共有する必要がある
+
+
+```
+$ ./run.sh \
+    --stage 8 \
+    --g2p pyopenjtalk_prosody_with_special_token \
+    --min_wav_duration 0.38 \
+    --fs 22050 \
+    --n_fft 1024 \
+    --n_shift 256 \
+    --dumpdir dump/22k \
+    --win_length null \
+    --tts_task gan_tts \
+    --feats_extract linear_spectrogram \
+    --feats_normalize none \
+    --train_config ./conf/tuning/finetune_vits.yaml \
+    --train_args "--init_param ${PRETRAINED_MODEL_FILE}" \
+    --tag finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody_with_special_token \
+    --inference_model train.total_count.ave_10best.pth \
+    --skip_upload_hf false \
+    --hf_repo fujie/fujie_studies_tts_finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody_with_special_token
+```
