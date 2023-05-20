@@ -1,4 +1,4 @@
-# ESPnet2 TTS のファインチューニングの実行例
+# ESPnet2 TTS のファインチューニングの実行例（感情の切り替え対象バージョン）
 
 ## やりたいこと
 
@@ -9,12 +9,26 @@
 
 - https://github.com/espnet/espnet/tree/master/egs2/jvs/tts1
 
-## 手順
+## 事前済モデル
+
+- [こちら](https://huggingface.co/fujie/fujie_studies_tts_finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody_with_special_token)で公開しました．
+  `Text2Speech`の`model_tag`に`fujie/fujie_studies_tts_finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody_with_special_token`を指定することで，このモデルを使用することができます．
+- 特殊トークンを利用できるように拡張したESPnetを使用する必要があります．下記でインストールできます．
+    ```
+    $ git clone --depth 1 https://github.com/fujie-cit/espnet.git -b dev-fujie
+    $ cd espnet
+    $ pip install -e ./
+    ```
+    
+
+## 学習手順
 
 ### ESPnet2 の環境構築
 
+ESPnet2は，特殊トークンに対応したpyopenjtalkを使う必要があるため，カスタムされたものを利用します．
+
 ```
-$ git clone --depth 1 https://github.com/espnet/espnet.git -b v.202304
+$ git clone --depth 1 https://github.com/fujie-cit/espnet.git -b dev-fujie
 $ cd espnet/tools
 $ . ./setup_cuda_env.sh /usr/local/cuda   # 環境によって異なる
 $ ./setup_anaconda.sh
@@ -24,12 +38,12 @@ $ make pyopenjtalk.done
 
 ### レシピディレクトリの作成
 
-```espnet/egs2```内の```jvs```ディレクトリを，```studies```という名前でコピーします．
+```espnet/egs2```内の```jvs```ディレクトリを，```studies_multi```という名前でコピーします．
 
 （実行前に，ESPnetをクローンしたディレクトリに移動しておいてください．）
 
 ```
-$ cp -r espnet/egs2/jvs espnet/egs2/studies
+$ cp -r espnet/egs2/jvs espnet/egs2/studies_multi
 ```
 
 ### 修正済ファイルのコピー
@@ -176,7 +190,7 @@ $ ./run.sh \
 
 学習の途中でも数エポック学習が進行していれば，試しに音声を合成してみることができます．
 
-学習と同様にレシピのディレクトリ（```espnet/egs2/studies/tts1```）で実行します．
+学習と同様にレシピのディレクトリ（```espnet/egs2/studies_multi/tts1```）で実行します．
 
 まず ESPnet 用の Python 環境を有効にします．
 ```
@@ -225,12 +239,12 @@ spk=ITA
 
 STUDIESの書き起こしファイルに合わせて data 内の text ファイルを生成するためのスクリプトです．
 
-今回は，書き起こしに含まれる役名（講師）や感情（平静や喜び），およびそれらと転記テスト間の記号（`|`）は削除してtextとしています．
-そのため，平静や喜びの音声がデータには含まれますが，それらの区別はつけません．
+今回は，書き起こしに含まれる役名（講師）や転記テスト間の記号（`|`）は削除し，
+感情については，喜びは`<happy>`，怒りは`<angry>`，悲しみは`<sad>`というトークンに置き換えて，
+平文の先頭において出力するようにしました．
 
 #### local/data_prep.sh の修正
 
-- STUDIESの中で，`Emotion100-Happy`，`Emotion100-Normal`, `recitation324`を使用しています．
 - 転記テキストの仕様が大きく違うため，`text`ファイルの生成には `local/make_text.py` を使用しています．
 - コーパス上のラベルファイルの位置が異なるため，`segments`生成時の入力ファイルのパスを変更しました．
 
@@ -240,9 +254,9 @@ STUDIESの書き起こしファイルに合わせて data 内の text ファイ�
 - `db.sh`を使わず，直接`db_root`に藤江研内のSTUDIESの位置を指定しています．
   - これはゆくゆく変更した方がよいと思います．
 - Stage 2 におけるデータ分割の方法を変更しました．
-  - 開発データは`Emotion100-Normal`の最初の15発話を使用しています．
-  - 評価データは`Emotion100-Normal`の16発話目から30発話目の15発話を
-  - 学習データはそれら以外全てとしています
+  - 開発データは各感情音声のの最初の5発話と，`Recitation324`の最後の24発話中の前半12発話を使用しています．
+  - 評価データは`Recitation324`の最後の24発話中の後半12発話を使用しています．
+  - 学習データはその他のデータですが，今回は開発データも含めています（各感情のデータ数を確保したかったため）．
 
 #### conf/tuning/fintune_vits.yaml
 
@@ -256,187 +270,5 @@ STUDIESの書き起こしファイルに合わせて data 内の text ファイ�
 
 ## その他のメモ
 
-#### モデルをアップロードする方法
+[こちら](./memo.md)にまとめています．
 
-```
-$ ./run.sh \
-    --stage 8 \
-    --g2p pyopenjtalk_prosody \
-    --min_wav_duration 0.38 \
-    --fs 22050 \
-    --n_fft 1024 \
-    --n_shift 256 \
-    --dumpdir dump/22k \
-    --win_length null \
-    --tts_task gan_tts \
-    --feats_extract linear_spectrogram \
-    --feats_normalize none \
-    --train_config ./conf/tuning/finetune_vits.yaml \
-    --train_args "--init_param ${PRETRAINED_MODEL_FILE}" \
-    --tag finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody \
-    --inference_model train.total_count.ave_10best.pth \
-    --skip_upload_hf false \
-    --hf_repo fujie/fujie_studies_tts_finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody
-```
-
-### 埋め込み層のみの学習
-
-generator_onlyオプションはESPnetをハックして実装したもの．
-
-discriminatorを全てフリーズすると，discriminatorのbackward計算時にエラーで停止してしまう．
-
-```
-$ ./run.sh \
-    --stage 6 \
-    --g2p pyopenjtalk_prosody_with_special_token \
-    --min_wav_duration 0.38 \
-    --fs 22050 \
-    --n_fft 1024 \
-    --n_shift 256 \
-    --dumpdir dump/22k \
-    --win_length null \
-    --tts_task gan_tts \
-    --feats_extract linear_spectrogram \
-    --feats_normalize none \
-    --train_config ./conf/tuning/finetune_vits.yaml \
-    --train_args "--init_param ${PRETRAINED_MODEL_FILE} \
-    --ignore_init_mismatch true \
-    --generator_only true \
-    --freeze_param tts.generator.text_encoder.encoders tts.generator.text_encoder.proj tts.generator.decoder tts.generator.posterior_encoder tts.generator.flow tts.generator.duration_predictor tts.discriminator" \
-    --tag finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody_with_special_token_emb \
-    --inference_model train.total_count.ave_10best.pth \
-    --ngpu 2
-```
-
-tts.generator.text_encoder.encoders
-tts.generator.text_encoder.proj
-tts.generator.decoder
-tts.generator.posterior_encoder
-tts.generator.flow
-tts.generator.duration_predictor
-tts.discriminator
-
-埋め込み層のみの学習は，やはりデータの違いが影響して上手くいかなかったのでJSUTでやり直す．
-
-`egs2/studies/tts1/conf/tuning/finetune_vits.yaml` を
-`egs2/jsut/tts1/conf/tuning/finetune_vits.yaml` にコピー.
-
-```
-$ ./run.sh \
-    --stage 0 \
-    --stop-stage 5 \
-    --g2p pyopenjtalk_prosody_with_special_token \
-    --min_wav_duration 0.38 \
-    --fs 22050 \
-    --n_fft 1024 \
-    --n_shift 256 \
-    --dumpdir dump/22k \
-    --win_length null \
-    --tts_task gan_tts \
-    --feats_extract linear_spectrogram \
-    --feats_normalize none \
-    --train_config ./conf/tuning/finetune_vits.yaml 
-```
-
-トークンリストは
-`egs2/studies_multi/tts1/dump/22k/token_list/(略)/tokens.txt` を
-`egs2/jsut/tts1/dump/22k/token_list/(略)/tokens.txt` にコピーする．
-
-downloadsフォルダのリンク（パラメタファイルの位置を確定するため）
-
-```
-$ ln -s ../../studies_multi/tts1/downloads .
-```
-
-学習
-
-```
-$ ./run.sh \
-    --stage 6 \
-    --g2p pyopenjtalk_prosody_with_special_token \
-    --min_wav_duration 0.38 \
-    --fs 22050 \
-    --n_fft 1024 \
-    --n_shift 256 \
-    --dumpdir dump/22k \
-    --win_length null \
-    --tts_task gan_tts \
-    --feats_extract linear_spectrogram \
-    --feats_normalize none \
-    --train_config ./conf/tuning/finetune_vits.yaml \
-    --train_args "--init_param ${PRETRAINED_MODEL_FILE} \
-    --ignore_init_mismatch true \
-    --generator_only true \
-    --freeze_param tts.generator.text_encoder.encoders tts.generator.text_encoder.proj tts.generator.decoder tts.generator.posterior_encoder tts.generator.flow tts.generator.duration_predictor tts.discriminator" \
-    --tag finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody_with_special_token_emb \
-    --inference_model train.total_count.ave_10best.pth \
-    --ngpu 2
-```
-
-メモリがきつそうなので少しバッチサイズを下げた
-
----
-再度方針を変えて，
-埋め込み層のパラメタのサイズが異なっても読み込めるように改造します．
-
-具体的には
-`espnet/espnet2/gan_tts/espnet_model.py`
-の load_state_dict フックして下記のようにします．
-```python
-    def load_state_dict(self, state_dict, *args, **kwargs):
-        embeding_layer_key = 'tts.generator.text_encoder.emb.weight'
-        if embeding_layer_key in state_dict:
-            state_emb_weight = state_dict[embeding_layer_key]
-            current_emb_weight = self.tts.generator.text_encoder.emb.weight
-            if state_emb_weight.shape != current_emb_weight.shape:
-                # 'emb.weight'のサイズが異なる場合、新しいパラメータを作成し、初期値で埋めます
-                new_emb_weight = torch.zeros_like(current_emb_weight)
-                min_rows = min(state_emb_weight.shape[0], current_emb_weight.shape[0])
-                new_emb_weight[:min_rows, :] = state_emb_weight[:min_rows, :]
-                state_dict[embeding_layer_key] = new_emb_weight
-
-        # フック前のload_state_dictメソッドを呼び出してパラメータを読み込みます
-        super(AbsGANESPnetModel, self).load_state_dict(state_dict, *args, **kwargs)
-```
-
-これでミスマッチがあっても読み込めるはずなので，続けて学習してみる．
-
-train_configから```--ignore_init_mismatch true```は消す．
-
-なんとなく気分的には <sos/eos> トークンがリストの最後じゃないと気持ち悪いので，
-<happy>
-<angry>
-<sad>
-<sos/eos>
-の順に直した．
-若干不整合が生じるが，気にしない．
-
-うまくいっていそう．
-
---
-parallel-waveganのファインチューニングもやってみたい．
-
-silver10で動いている．
-終わったら exp フォルダごと gdrive にコピーして共有する必要がある
-
-
-```
-$ ./run.sh \
-    --stage 8 \
-    --g2p pyopenjtalk_prosody_with_special_token \
-    --min_wav_duration 0.38 \
-    --fs 22050 \
-    --n_fft 1024 \
-    --n_shift 256 \
-    --dumpdir dump/22k \
-    --win_length null \
-    --tts_task gan_tts \
-    --feats_extract linear_spectrogram \
-    --feats_normalize none \
-    --train_config ./conf/tuning/finetune_vits.yaml \
-    --train_args "--init_param ${PRETRAINED_MODEL_FILE}" \
-    --tag finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody_with_special_token \
-    --inference_model train.total_count.ave_10best.pth \
-    --skip_upload_hf false \
-    --hf_repo fujie/fujie_studies_tts_finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody_with_special_token
-```

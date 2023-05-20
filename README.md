@@ -1,5 +1,7 @@
 # ESPnet2 TTS のファインチューニングの実行例
 
+- [拡張トークンを用いて感情を切り替えて合成する例](./README.multi.md)を作成しました．
+
 ## やりたいこと
 
 - [STUDIESコーパス](https://research.nii.ac.jp/src/STUDIES.html)の一部を使って，感情を含む音声合成モデルを作成すること．
@@ -9,7 +11,12 @@
 
 - https://github.com/espnet/espnet/tree/master/egs2/jvs/tts1
 
-## 手順
+## 事前済モデル
+
+- [こちら](https://huggingface.co/fujie/fujie_studies_tts_finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody)で公開しました．
+  `Text2Speech`の`model_tag`に`fujie/fujie_studies_tts_finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody`を指定することで，このモデルを使用することができます．
+
+## 学習手順
 
 ### ESPnet2 の環境構築
 
@@ -248,25 +255,4 @@ STUDIESの書き起こしファイルに合わせて data 内の text ファイ�
 
 ## その他のメモ
 
-#### モデルをアップロードする方法
-
-```
-$ ./run.sh \
-    --stage 8 \
-    --g2p pyopenjtalk_prosody \
-    --min_wav_duration 0.38 \
-    --fs 22050 \
-    --n_fft 1024 \
-    --n_shift 256 \
-    --dumpdir dump/22k \
-    --win_length null \
-    --tts_task gan_tts \
-    --feats_extract linear_spectrogram \
-    --feats_normalize none \
-    --train_config ./conf/tuning/finetune_vits.yaml \
-    --train_args "--init_param ${PRETRAINED_MODEL_FILE}" \
-    --tag finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody \
-    --inference_model train.total_count.ave_10best.pth
-    --skip_upload_hf false \
-    --hf_repo fujie/fujie_studies_tts_finetune_vits_raw_phn_jaconv_pyopenjtalk_prosody
-```
+[こちら](./memo.md)にまとめています．
